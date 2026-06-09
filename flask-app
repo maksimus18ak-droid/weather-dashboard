@@ -1,0 +1,75 @@
+from flask import Flask, render_template, request, jsonify
+import requests
+from functools import wraps
+from datetime import datetime, timedelta
+
+app = Flask(__name__)
+
+# Простое кэширование в памяти
+cache = {}
+CACHE_TTL = timedelta(minutes=10)
+
+def cached(ttl=CACHE_TTL):
+    def decorator(func):
+        @wraps(func)
+        def wrapper(city):
+            now = datetime.now()
+            if city in cache and (now - cache[city]['time']) < ttl:
+                return cache[city]['data']
+            result = func(city)
+            cache[city] = {'data': result, 'time': now}
+            return result
+        return wrapper
+    return decorator
+
+@cached()
+def get_weather(city):
+    API_KEY = "your_openweathermap_api_key"  # замените на реальный ключ
+    url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={API_KEY}&units=metric&lang=ru"
+    resp = requests.get(url)
+    if resp.status_code != 200:
+        return None
+    return resp.json()
+
+@cached()
+def get_forecast(city):
+    API_KEY = "your_openweathermap_api_key"
+    url = f"http://api.openweathermap.org/data/2.5/forecast?q={city}&appid={API_KEY}&units=metric&lang=ru"
+    resp = requests.get(url)
+    if resp.status_code != 200:
+        return None
+    return resp.json()
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/api/weather')
+def api_weather():
+    city = request.args.get('city')
+    if not city:
+        return jsonify({'error': 'Город не указан'}), 400
+    weather = get_weather(city)
+    if not weather:
+        return jsonify({'error': 'Город не найден'}), 404
+    return jsonify(weather)
+
+@app.route('/api/forecast')
+def api_forecast():
+    city = request.args.get('city')
+    if not city:
+        return jsonify({'error': 'Город не указан'}), 400
+    forecast = get_forecast(city)
+    if not forecast:
+        return jsonify({'error': 'Город не найден'}), 404
+    # агрегируем прогноз на 5 дней (по одному значению в полдень)
+    daily = {}
+    for item in forecast['list']:
+        date = item['dt_txt'].split(' ')[0]
+        if date not in daily:
+            daily[date] = item
+    forecast['list'] = list(daily.values())[:5]
+    return jsonify(forecast)
+
+if __name__ == '__main__':
+    app.run(debug=True, port=5000)
