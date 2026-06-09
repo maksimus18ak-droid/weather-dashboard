@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vue Weather Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/vue@2/dist/vue.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; padding: 20px; }
+        .card { border: 1px solid #ccc; border-radius: 10px; padding: 15px; margin: 10px auto; max-width: 300px; }
+        .forecast-grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 20px; }
+        .forecast-item { background: #f0f0f0; border-radius: 8px; padding: 10px; width: 120px; }
+        input, button { padding: 8px; margin: 5px; }
+        canvas { max-width: 600px; margin: 20px auto; }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <h1>🌦️ Прогноз погоды (Vue)</h1>
+        <div>
+            <input v-model="city" placeholder="Введите город" @keyup.enter="fetchWeather">
+            <button @click="fetchWeather">Поиск</button>
+        </div>
+        <div v-if="error" style="color:red">{{ error }}</div>
+        <div v-if="weather" class="card">
+            <h2>{{ weather.name }}, {{ weather.sys.country }}</h2>
+            <p>🌡️ {{ Math.round(weather.main.temp) }}°C</p>
+            <p>💧 Влажность: {{ weather.main.humidity }}%</p>
+            <p>🌬️ Ветер: {{ weather.wind.speed }} м/с</p>
+            <p>{{ weather.weather[0].description }}</p>
+        </div>
+        <div class="forecast-grid" v-if="forecast.length">
+            <div v-for="day in forecast" :key="day.dt" class="forecast-item">
+                <strong>{{ formatDate(day.dt_txt) }}</strong><br>
+                {{ Math.round(day.main.temp) }}°C<br>
+                {{ day.weather[0].description }}
+            </div>
+        </div>
+        <canvas id="tempChart" width="400" height="200" v-if="forecast.length"></canvas>
+    </div>
+
+    <script>
+        new Vue({
+            el: '#app',
+            data: {
+                city: '',
+                weather: null,
+                forecast: [],
+                error: '',
+                chart: null,
+                apiKey: 'your_openweathermap_api_key' // замените на свой ключ
+            },
+            methods: {
+                async fetchWeather() {
+                    if (!this.city) return;
+                    this.error = '';
+                    try {
+                        const weatherUrl = `https://api.openweathermap.org/data/2.5/weather?q=${this.city}&appid=${this.apiKey}&units=metric&lang=ru`;
+                        const weatherRes = await axios.get(weatherUrl);
+                        this.weather = weatherRes.data;
+                        const forecastUrl = `https://api.openweathermap.org/data/2.5/forecast?q=${this.city}&appid=${this.apiKey}&units=metric&lang=ru`;
+                        const forecastRes = await axios.get(forecastUrl);
+                        // агрегируем по дням
+                        const daily = {};
+                        forecastRes.data.list.forEach(item => {
+                            const date = item.dt_txt.split(' ')[0];
+                            if (!daily[date]) daily[date] = item;
+                        });
+                        this.forecast = Object.values(daily).slice(0,5);
+                        this.updateChart();
+                    } catch (err) {
+                        this.error = 'Город не найден';
+                        this.weather = null;
+                        this.forecast = [];
+                    }
+                },
+                formatDate(dt) {
+                    return new Date(dt).toLocaleDateString('ru-RU');
+                },
+                updateChart() {
+                    const ctx = document.getElementById('tempChart').getContext('2d');
+                    if (this.chart) this.chart.destroy();
+                    this.chart = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: this.forecast.map(d => this.formatDate(d.dt_txt)),
+                            datasets: [{
+                                label: 'Температура (°C)',
+                                data: this.forecast.map(d => Math.round(d.main.temp)),
+                                borderColor: 'orange'
+                            }]
+                        }
+                    });
+                }
+            }
+        });
+    </script>
+</body>
+</html>
