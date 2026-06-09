@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Погодный дашборд</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>📅 Прогноз погоды</h1>
+        <div class="search">
+            <input type="text" id="city" placeholder="Введите город" autocomplete="off">
+            <button onclick="fetchWeather()">Узнать</button>
+        </div>
+        <div id="current" class="card"></div>
+        <div id="forecast" class="forecast-grid"></div>
+        <canvas id="tempChart" width="400" height="200"></canvas>
+    </div>
+    <script>
+        let chart;
+        async function fetchWeather() {
+            const city = document.getElementById('city').value;
+            if (!city) return;
+            // текущая погода
+            const weatherRes = await fetch(`/api/weather?city=${city}`);
+            const weather = await weatherRes.json();
+            if (weather.error) {
+                alert(weather.error);
+                return;
+            }
+            document.getElementById('current').innerHTML = `
+                <h2>${weather.name}, ${weather.sys.country}</h2>
+                <p>🌡️ ${Math.round(weather.main.temp)}°C</p>
+                <p>💧 Влажность: ${weather.main.humidity}%</p>
+                <p>🌬️ Ветер: ${weather.wind.speed} м/с</p>
+                <p>${weather.weather[0].description}</p>
+            `;
+            // прогноз
+            const forecastRes = await fetch(`/api/forecast?city=${city}`);
+            const forecast = await forecastRes.json();
+            if (forecast.error) return;
+            const dates = [];
+            const temps = [];
+            let gridHtml = '<div class="forecast-grid">';
+            forecast.list.forEach(day => {
+                const date = new Date(day.dt_txt).toLocaleDateString('ru-RU');
+                dates.push(date);
+                const temp = Math.round(day.main.temp);
+                temps.push(temp);
+                gridHtml += `
+                    <div class="forecast-card">
+                        <strong>${date}</strong><br>
+                        ${temp}°C<br>
+                        ${day.weather[0].description}
+                    </div>
+                `;
+            });
+            gridHtml += '</div>';
+            document.getElementById('forecast').innerHTML = gridHtml;
+            // график
+            if (chart) chart.destroy();
+            const ctx = document.getElementById('tempChart').getContext('2d');
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: { labels: dates, datasets: [{ label: 'Температура (°C)', data: temps, borderColor: 'orange' }] }
+            });
+        }
+    </script>
+</body>
+</html>
